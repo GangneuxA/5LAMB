@@ -7,6 +7,7 @@ provider:
   runtime: nodejs20.x
   runtimeManagement: auto
   region: eu-west-3
+  stage: dev
   environment:
     DYNAMODB_TABLE: BlogifyPostsTable
     S3_BUCKET: blogify-media-${self:provider.stage}
@@ -107,7 +108,7 @@ resources:
           - email
 
     CognitoAuthorizer:
-      Type: AWS::Cognito::UserPool
+      Type: AWS::Cognito::UserPoolAuthorizer
       Properties:
         UserPoolId:
           Ref: CognitoUserPool
