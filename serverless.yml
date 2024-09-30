@@ -1,0 +1,118 @@
+service: blogify-backend
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  runtimeManagement: auto
+  region: eu-west-3
+  environment:
+    DYNAMODB_TABLE: BlogifyPostsTable
+    S3_BUCKET: blogify-media-${self:provider.stage}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:PutItem
+        - dynamodb:GetItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+        - dynamodb:Scan
+      Resource:
+        - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_TABLE}
+    - Effect: Allow
+      Action:
+        - s3:PutObject
+        - s3:GetObject
+        - s3:DeleteObject
+      Resource:
+        - arn:aws:s3:::${self:provider.environment.S3_BUCKET}/*
+    - Effect: Allow
+      Action:
+        - cognito-idp:AdminCreateUser
+        - cognito-idp:AdminInitiateAuth
+        - cognito-idp:AdminRespondToAuthChallenge
+      Resource:
+        - arn:aws:cognito-idp:${self:provider.region}:*:userpool/*
+
+functions:
+  createPost:
+    handler: src/posts/create.handler
+    events:
+      - http:
+          path: posts
+          method: post
+          cors: true
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId:
+              Ref: CognitoAuthorizer
+
+  getPost:
+    handler: src/posts/get.handler
+    events:
+      - http:
+          path: posts/{id}
+          method: get
+          cors: true
+
+  updatePost:
+    handler: src/posts/update.handler
+    events:
+      - http:
+          path: posts/{id}
+          method: put
+          cors: true
+
+  deletePost:
+    handler: src/posts/delete.handler
+    events:
+      - http:
+          path: posts/{id}
+          method: delete
+          cors: true
+
+  uploadMedia:
+    handler: src/media/upload.handler
+    events:
+      - http:
+          path: media
+          method: post
+          cors: true
+
+resources:
+  Resources:
+    BlogifyPostsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.DYNAMODB_TABLE}
+        AttributeDefinitions:
+          - AttributeName: postId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: postId
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+
+    BlogifyMediaBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:provider.environment.S3_BUCKET}
+
+    CognitoUserPool:
+      Type: AWS::Cognito::UserPool
+      Properties:
+        UserPoolName: BlogifyUserPool
+        AutoVerifiedAttributes:
+          - email
+
+    CognitoAuthorizer:
+      Type: AWS::Cognito::UserPool
+      Properties:
+        UserPoolId:
+          Ref: CognitoUserPool
+
+plugins:
+  - serverless-offline
+  - serverless-dynamodb-local
+  - serverless-s3-local
