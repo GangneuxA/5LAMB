@@ -11,6 +11,13 @@ provider:
   environment:
     DYNAMODB_TABLE: BlogifyPostsTable
     S3_BUCKET: blogify-media-${self:provider.stage}
+    JWT_SECRET: supersecret
+    USER_POOL_ID: 
+      Ref: CognitoUserPool
+    COGNITO_APP_CLIENT_ID:
+        Ref: CognitoUserPoolClient
+    SNS_TOPIC_ARN: 
+        Ref: BlogPostTopic
   iamRoleStatements:
     - Effect: Allow
       Action:
@@ -19,24 +26,93 @@ provider:
         - dynamodb:UpdateItem
         - dynamodb:DeleteItem
         - dynamodb:Scan
+        - dynamodb:Query
       Resource:
         - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_TABLE}
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+      Resource:
+        - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_TABLE}/index/TitleIndex
     - Effect: Allow
       Action:
         - s3:PutObject
         - s3:GetObject
         - s3:DeleteObject
+        - s3:ListBucket
       Resource:
         - arn:aws:s3:::${self:provider.environment.S3_BUCKET}/*
+    - Effect: Allow
+      Action:
+        - s3:PutObject
+        - s3:GetObject
+        - s3:DeleteObject
+        - s3:ListBucket
+      Resource:
+        - arn:aws:s3:::${self:provider.environment.S3_BUCKET}
     - Effect: Allow
       Action:
         - cognito-idp:AdminCreateUser
         - cognito-idp:AdminInitiateAuth
         - cognito-idp:AdminRespondToAuthChallenge
+        - cognito-idp:AdminGetUser
+        - cognito-idp:ListUsers
+        - cognito-idp:AdminAddUserToGroup
+        - cognito-idp:AdminRemoveUserFromGroup
+        - cognito-idp:AdminListGroupsForUser 
       Resource:
-        - arn:aws:cognito-idp:${self:provider.region}:*:userpool/*
+        - Fn::Sub: arn:aws:cognito-idp:${self:provider.region}:*:userpool/${CognitoUserPool}
+    - Effect: "Allow"
+      Action:
+        - "sns:Publish"
+      Resource:
+        - arn:aws:sns:${self:provider.region}:*:${self:resources.Resources.BlogPostTopic.Properties.TopicName}
+
 
 functions:
+  login:
+    handler: src/auth/login.handler
+    events:
+      - http:
+          path: auth/login
+          method: post
+          cors: true
+          request:
+            schemas:
+              application/json:
+                type: object
+                properties:
+                  username:
+                    type: string
+                  password:
+                    type: string
+                required:
+                  - username
+                  - password
+
+  signup:
+    handler: src/auth/sigin.handler
+    events:
+      - http:
+          path: auth/signup
+          method: post
+          cors: true
+          request:
+            schemas:
+              application/json:
+                type: object
+                properties:
+                  username:
+                    type: string
+                  password:
+                    type: string
+                  email:
+                    type: string
+                required:
+                  - username
+                  - password
+                  - email
+
   createPost:
     handler: src/posts/create.handler
     events:
@@ -47,7 +123,19 @@ functions:
           authorizer:
             type: COGNITO_USER_POOLS
             authorizerId:
-              Ref: CognitoAuthorizer
+              Ref: ApiGatewayAuthorizer
+          request:
+            schemas:
+              application/json:
+                type: object
+                properties:
+                  title:
+                    type: string
+                  content:
+                    type: string
+                required:
+                  - title
+                  - content
 
   getPost:
     handler: src/posts/get.handler
@@ -56,7 +144,26 @@ functions:
           path: posts/{id}
           method: get
           cors: true
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId:
+              Ref: ApiGatewayAuthorizer
 
+  searchPosts:
+    handler: src/posts/search.handler
+    events:
+      - http:
+          path: posts/search
+          method: get
+          cors: true
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId:
+              Ref: ApiGatewayAuthorizer
+          request:
+            parameters:
+              querystrings:
+                title: true
   updatePost:
     handler: src/posts/update.handler
     events:
@@ -64,6 +171,22 @@ functions:
           path: posts/{id}
           method: put
           cors: true
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId:
+              Ref: ApiGatewayAuthorizer
+          request:
+            schema:
+              application/json:
+                type: object
+                properties:
+                  title:
+                    type: string
+                  content:
+                    type: string
+                required:
+                  - title
+                  - content
 
   deletePost:
     handler: src/posts/delete.handler
@@ -72,6 +195,10 @@ functions:
           path: posts/{id}
           method: delete
           cors: true
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId:
+              Ref: ApiGatewayAuthorizer
 
   uploadMedia:
     handler: src/media/upload.handler
@@ -80,6 +207,37 @@ functions:
           path: media
           method: post
           cors: true
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId:
+              Ref: ApiGatewayAuthorizer
+
+  getMedia:
+    handler: src/media/get.handler
+    events:
+      - http:
+          path: media
+          method: get
+          cors: true
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId:
+              Ref: ApiGatewayAuthorizer
+          request:
+            schema:
+              application/json:
+                type: object
+                properties:
+                  filename:
+                    type: string
+                  contentType:
+                    type: string
+                  file:
+                    type: string
+                required:
+                  - file
+                  - filename
+                  
 
 resources:
   Resources:
@@ -90,30 +248,82 @@ resources:
         AttributeDefinitions:
           - AttributeName: postId
             AttributeType: S
+          - AttributeName: title
+            AttributeType: S
         KeySchema:
           - AttributeName: postId
             KeyType: HASH
-        BillingMode: PAY_PER_REQUEST
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
+        GlobalSecondaryIndexes:
+          - IndexName: TitleIndex
+            KeySchema:
+              - AttributeName: title
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+            ProvisionedThroughput:
+              ReadCapacityUnits: 5
+              WriteCapacityUnits: 5
 
     BlogifyMediaBucket:
       Type: AWS::S3::Bucket
       Properties:
         BucketName: ${self:provider.environment.S3_BUCKET}
 
+    ApiGatewayRestApi:
+      Type: AWS::ApiGateway::RestApi
+      Properties:
+        Name: api-gateway-blogify
+
     CognitoUserPool:
       Type: AWS::Cognito::UserPool
       Properties:
-        UserPoolName: BlogifyUserPool
+        UserPoolName: ContentCreatorUserPool
         AutoVerifiedAttributes:
           - email
-
-    CognitoAuthorizer:
-      Type: AWS::Cognito::UserPoolAuthorizer
+    CognitoUserPoolClient:
+      Type: AWS::Cognito::UserPoolClient
       Properties:
+        ClientName: UserPoolClient
+        GenerateSecret: false
         UserPoolId:
           Ref: CognitoUserPool
-
-plugins:
-  - serverless-offline
-  - serverless-dynamodb-local
-  - serverless-s3-local
+        ExplicitAuthFlows:
+          - ADMIN_NO_SRP_AUTH
+          - USER_PASSWORD_AUTH
+    CognitoUserPoolGroupAdmin:
+      Type: AWS::Cognito::UserPoolGroup
+      Properties:
+        GroupName: admin
+        UserPoolId:
+          Ref: CognitoUserPool
+    CognitoUserPoolGroupEditor:
+      Type: AWS::Cognito::UserPoolGroup
+      Properties:
+        GroupName: editor
+        UserPoolId:
+          Ref: CognitoUserPool
+    CognitoUserPoolGroupGuestAuthor:
+      Type: AWS::Cognito::UserPoolGroup
+      Properties:
+        GroupName: guest-author
+        UserPoolId:
+          Ref: CognitoUserPool
+    ApiGatewayAuthorizer:
+      Type: AWS::ApiGateway::Authorizer
+      Properties:
+        Name: CognitoAuthorizer
+        Type: COGNITO_USER_POOLS
+        RestApiId:
+          Ref: ApiGatewayRestApi
+        IdentitySource: method.request.header.Authorization
+        ProviderARNs:
+          - Fn::GetAtt:
+              - CognitoUserPool
+              - Arn
+    BlogPostTopic:
+      Type: "AWS::SNS::Topic"
+      Properties:
+        TopicName: "blog-post-topic"

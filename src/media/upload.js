@@ -1,7 +1,22 @@
 const AWS = require('aws-sdk');
+const { verifyRole } = require('../utils');
 const s3 = new AWS.S3();
-
+  
 module.exports.handler = async (event) => {
+
+    const allowedRoles = ['admin', 'editor'];
+    const customToken = event.headers['X-Custom-Token'];
+    if (!customToken) {
+        return {
+            statusCode: 401,
+            body: JSON.stringify({ message: 'Unauthorized: Custom token is missing' }),
+        };
+    }
+    const right = await verifyRole(allowedRoles, customToken);
+
+    if (right.statusCode === 403 || right.statusCode === 500) {
+        return right;
+    }
   const data = JSON.parse(event.body);
   const params = {
     Bucket: process.env.S3_BUCKET,

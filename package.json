@@ -11,6 +11,12 @@
   "description": "",
   "dependencies": {
     "aws-sdk": "^2.1691.0",
+    "busboy": "^1.6.0",
+    "jsonwebtoken": "^9.0.2",
     "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "serverless-dynamodb-local": "^0.2.40",
+    "serverless-offline": "^14.3.2"
   }
 }
