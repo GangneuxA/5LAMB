@@ -48,14 +48,23 @@ Cette architecture est conçue pour être modulaire, scalable et coûts-optimis�
 
 En résumé, cette architecture repose sur des composants AWS serverless qui travaillent ensemble pour offrir une solution de blogging performante, évolutive et sécurisée.
 
-## Setup
-
 ## API documentation
 
-## Deployment Guide
-Tout d'abords clone ce projet puis dans la ranice du projet executer c'est commandes
+Pour ce qui concerne la documentation API, vous trouverez toutes les informations nécessaires dans le fichier `API_documentation.md`
 
-```
+## Setup
+
+Avant de déployer l'architecture il vous faut sur votre machine : 
+
+*   Aws, npm et serverless installés sur votre machine.
+*   Veuillez modifier les variables d'environnements dans le fichier `serverless.yml` selon vos besoins.
+*   Avoir un compte AWS avec du credit dessus. 
+
+## Deployment Guide
+
+Une fois le Setup pret, placé vous dans le dossier racine du projet et nous pouvons déployer l'application en suivant les commandes ci-dessous :
+
+```Bash
 
 npm install 
 
