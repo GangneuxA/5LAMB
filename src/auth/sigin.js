@@ -23,13 +23,12 @@ exports.handler = async (event) => {
     };
 
     try {
-        // Create the user
+
         await cognito.adminCreateUser(params).promise();
 
-        // Add the user to the group
         const groupParams = {
-            GroupName: 'guest-author', // replace with your group name
-            UserPoolId: process.env.USER_POOL_ID, // replace with your user pool id
+            GroupName: 'guest-author',
+            UserPoolId: process.env.USER_POOL_ID,
             Username: username
         };
 
